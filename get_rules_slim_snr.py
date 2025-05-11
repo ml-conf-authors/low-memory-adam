@@ -63,6 +63,12 @@ def extract_rules(grouped_stats, cutoff):
     adalayer_rules = {}
 
     unique_layers = df['key'].unique()
+    if config.depth_averaged == 'True':
+        # used depth averaged rules
+        mean_snr = grouped_stats.groupby(['compress_dims', 'layer_name'])['snr'].transform('mean')
+        grouped_stats['mean_snr'] = mean_snr
+    else:
+        grouped_stats['mean_snr'] = grouped_stats['snr']
 
     for layer in unique_layers:
         
@@ -85,9 +91,9 @@ def extract_rules(grouped_stats, cutoff):
 
         # 3. For slim_trim
         # First filter rows above cutoff
-        df_above_cutoff = get_rows_where_col_greater(df_layer, 'snr', cutoff)
+        df_above_cutoff = get_rows_where_col_greater(df_layer, 'mean_snr', cutoff)
         if not df_above_cutoff.empty:
-            max_snr_row = df_above_cutoff.loc[df_above_cutoff['snr'].idxmax()]
+            max_snr_row = df_above_cutoff.loc[df_above_cutoff['mean_snr'].idxmax()]
             compress_dims = eval(max_snr_row['compress_dims'])
         else:
             compress_dims = None  # or pd.Series() or whatever default value makes sense for your use case
@@ -103,6 +109,7 @@ def extract_rules(grouped_stats, cutoff):
 parser = argparse.ArgumentParser(description = 'Hyperparameters')
 parser.add_argument('--snr_filename', type = str, default = 'snr_data')
 parser.add_argument('--snr_cutoff', type = float, default = 1.0)
+parser.add_argument('--depth_averaged', type = str, default = 'False')
 
 
 cfg = parser.parse_args()
@@ -119,6 +126,9 @@ for layer in unique_layers:
     dfs.append(df_layer)
 
 dfs = pd.concat(dfs, axis = 0, ignore_index = True)
+
+# exclude initial transit data
+dfs = get_rows_where_col_greater(dfs, 'step', 999)
     
 grouped_stats = dfs.groupby(['key', 'compress_dims']).agg({'snr': 'mean', 'step': 'first', 'shape': 'first'}).reset_index()
 columns = ['step', 'key', 'shape', 'compress_dims', 'snr']
